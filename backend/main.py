@@ -39,8 +39,19 @@ class ChatRequest(BaseModel):
     api_key: str
     history: List[ChatMessage]
 
+def validate_api_key(api_key: str):
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Gemini API Key is required. Please enter a valid key in the top-right header field.")
+    key_lower = api_key.lower()
+    if "dummy" in key_lower or "placeholder" in key_lower or "your_api_key" in key_lower or api_key == "AIzaSyDummyKey12345":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid API Key: You are using a dummy or placeholder API key. Please enter a valid Gemini API Key in the top-right header input field."
+        )
+
 @app.post("/api/process-youtube")
 async def process_youtube(req: YouTubeRequest):
+    validate_api_key(req.api_key)
     try:
         video_id = YouTubeService.extract_video_id(req.url)
     except ValueError as e:
@@ -126,6 +137,7 @@ async def process_upload(
     file: UploadFile = File(...),
     api_key: str = Form(...)
 ):
+    validate_api_key(api_key)
     # Generate unique ID for this upload
     video_id = str(uuid.uuid4())
     ext = file.filename.split(".")[-1]
@@ -172,6 +184,7 @@ async def process_upload(
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    validate_api_key(req.api_key)
     # Retrieve relevant transcript chunks
     relevant_chunks = RAGService.search(req.video_id, req.query, req.api_key, top_k=5)
     

@@ -23,6 +23,11 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
       alert("Please configure your Gemini API Key first.");
       return;
     }
+    const isDummy = apiKey.toLowerCase().includes('dummy') || apiKey.toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || apiKey.toLowerCase().includes('your_api_key');
+    if (isDummy) {
+      alert("You are using a placeholder/dummy API Key. Please enter a valid Gemini API Key in the top-right header input field.");
+      return;
+    }
 
     const userMessage = { role: 'user', content: query.trim() };
     setMessages((prev) => [...prev, userMessage]);

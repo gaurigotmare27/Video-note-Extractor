@@ -19,9 +19,6 @@ class GeminiService:
         """
         cls._set_api_key(api_key)
         
-        # Configure model
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        
         system_instruction = (
             "You are an expert video content analyst and learning assistant. Your task is to process the input "
             "(which is either a text transcript with timestamps or an audio/video file) and extract rich, structured educational assets.\n"
@@ -63,6 +60,12 @@ class GeminiService:
             "Ensure the quiz has at least 3 high-quality conceptual questions, and flashcards have at least 5 key items."
         )
 
+        # Configure model
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_instruction
+        )
+
         prompt = "Analyze the following content and generate the structured JSON assets:"
 
         contents = []
@@ -89,13 +92,21 @@ class GeminiService:
             raise ValueError("Either transcript_text or media_file_path must be provided")
 
         # Generate content with JSON output mime-type
-        response = model.generate_content(
-            contents,
-            generation_config={"response_mime_type": "application/json"},
-            safety_settings=None,
-            system_instruction=system_instruction,
-            request_options=RequestOptions(timeout=600.0) # 10 minute timeout for long files
-        )
+        try:
+            response = model.generate_content(
+                contents,
+                generation_config={"response_mime_type": "application/json"},
+                safety_settings=None,
+                request_options=RequestOptions(timeout=600.0) # 10 minute timeout for long files
+            )
+        except Exception as e:
+            print(f"Failed to generate content: {str(e)}")
+            try:
+                models = [m.name for m in genai.list_models()]
+                print(f"Available models for this API key: {models}")
+            except Exception as list_err:
+                print(f"Failed to list models: {str(list_err)}")
+            raise e
         
         # Clean up Gemini uploaded file if it was uploaded
         if media_file_path and 'uploaded_file' in locals():
@@ -132,7 +143,6 @@ class GeminiService:
         Instructs the model to use clickable citations like [MM:SS] or [HH:MM:SS] where relevant.
         """
         cls._set_api_key(api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
         
         system_instruction = (
             "You are an assistant helping a user study a video content transcript.\n"
@@ -145,6 +155,11 @@ class GeminiService:
             "Do not make up timestamps; only use the timestamps provided in the context segments."
         )
 
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_instruction
+        )
+
         formatted_history = []
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
@@ -155,7 +170,6 @@ class GeminiService:
         formatted_history.append({"role": "user", "parts": [prompt]})
 
         response = model.generate_content(
-            contents=formatted_history,
-            system_instruction=system_instruction
+            contents=formatted_history
         )
         return response.text

@@ -22,12 +22,36 @@ class YouTubeService:
         Fetches the transcript for a YouTube video using youtube-transcript-api.
         Returns a list of dicts: [{'text': str, 'start': float, 'duration': float}]
         """
+        raw_transcript = None
         try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            return transcript
+            api = YouTubeTranscriptApi()
+            try:
+                # Try fetching English first
+                raw_transcript = api.fetch(video_id)
+            except Exception:
+                # Fallback to the first available transcript (e.g. auto-generated or other language)
+                transcript_list = api.list(video_id)
+                for transcript in transcript_list:
+                    raw_transcript = transcript.fetch()
+                    break
         except Exception as e:
             print(f"Error fetching transcript for {video_id}: {str(e)}")
             return None
+
+        if not raw_transcript:
+            return None
+
+        normalized = []
+        for item in raw_transcript:
+            if isinstance(item, dict):
+                normalized.append(item)
+            else:
+                normalized.append({
+                    'text': getattr(item, 'text', ''),
+                    'start': getattr(item, 'start', 0.0),
+                    'duration': getattr(item, 'duration', 0.0)
+                })
+        return normalized
 
     @classmethod
     def download_audio(cls, video_id: str, output_dir: str) -> str:
