@@ -225,6 +225,33 @@ async def stream_file(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path)
 
+@app.get("/api/test-models")
+async def test_models(api_key: str):
+    from google import genai
+    client = genai.Client(api_key=api_key)
+    try:
+        models = [m.name for m in client.models.list()]
+        emb_004_status = "OK"
+        try:
+            client.models.embed_content(model="text-embedding-004", contents="test")
+        except Exception as e:
+            emb_004_status = str(e)
+            
+        emb_v2_status = "OK"
+        try:
+            client.models.embed_content(model="gemini-embedding-2", contents="test")
+        except Exception as e:
+            emb_v2_status = str(e)
+            
+        return {
+            "models": models,
+            "text-embedding-004": emb_004_status,
+            "gemini-embedding-2": emb_v2_status
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+

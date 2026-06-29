@@ -10,7 +10,7 @@ class YouTubeService:
         Extracts the video ID from a YouTube URL.
         Supports standard, share, shorts, and embed formats.
         """
-        reg = r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})'
+        reg = r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|live)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})'
         match = re.search(reg, url)
         if match:
             return match.group(1)

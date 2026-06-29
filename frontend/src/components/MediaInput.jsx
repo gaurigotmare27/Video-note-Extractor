@@ -11,7 +11,7 @@ export default function MediaInput({ onProcessStart, onProcessSuccess, onProcess
       alert("Please enter a Gemini API Key in the header first.");
       return;
     }
-    const isDummy = apiKey.toLowerCase().includes('dummy') || apiKey.toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || apiKey.toLowerCase().includes('your_api_key');
+    const isDummy = (apiKey || '').toLowerCase().includes('dummy') || (apiKey || '').toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || (apiKey || '').toLowerCase().includes('your_api_key');
     if (isDummy) {
       alert("You are using a placeholder/dummy API Key. Please enter a valid Gemini API Key in the top-right header input field.");
       return;
@@ -44,7 +44,7 @@ export default function MediaInput({ onProcessStart, onProcessSuccess, onProcess
       alert("Please enter a Gemini API Key in the header first.");
       return;
     }
-    const isDummy = apiKey.toLowerCase().includes('dummy') || apiKey.toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || apiKey.toLowerCase().includes('your_api_key');
+    const isDummy = (apiKey || '').toLowerCase().includes('dummy') || (apiKey || '').toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || (apiKey || '').toLowerCase().includes('your_api_key');
     if (isDummy) {
       alert("You are using a placeholder/dummy API Key. Please enter a valid Gemini API Key in the top-right header input field.");
       return;

@@ -9,7 +9,7 @@ export default function Header({ apiKey, setApiKey }) {
     localStorage.setItem('gemini_api_key', key);
   };
 
-  const isDummy = apiKey.toLowerCase().includes('dummy') || apiKey.toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || apiKey.toLowerCase().includes('your_api_key');
+  const isDummy = (apiKey || '').toLowerCase().includes('dummy') || (apiKey || '').toLowerCase().includes('placeholder') || apiKey === 'AIzaSyDummyKey12345' || (apiKey || '').toLowerCase().includes('your_api_key');
 
   return (
     <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

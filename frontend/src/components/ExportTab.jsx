@@ -25,21 +25,85 @@ export default function ExportTab({ notes, summary, title }) {
 
   const handlePrintPdf = () => {
     if (!notes) return;
-
     const printWindow = window.open('', '_blank');
-    
-    // Convert basic markdown elements to HTML for print window
+    let inList = false;
+    let inCodeBlock = false;
+
     const formattedNotesHTML = notes
       .split('\n')
       .map(line => {
-        if (line.startsWith('### ')) return `<h3>${line.substring(4)}</h3>`;
-        if (line.startsWith('## ')) return `<h2>${line.substring(3)}</h2>`;
-        if (line.startsWith('# ')) return `<h1>${line.substring(2)}</h1>`;
-        if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-          return `<li>${line.replace(/^[\s*-]+/, '').trim()}</li>`;
+        const trimmed = line.trim();
+        
+        // Code blocks
+        if (trimmed.startsWith('```')) {
+          if (inCodeBlock) {
+            inCodeBlock = false;
+            return '</code></pre>';
+          } else {
+            inCodeBlock = true;
+            return '<pre><code>';
+          }
         }
-        if (!line.trim()) return '<br/>';
-        return `<p>${line}</p>`;
+        
+        if (inCodeBlock) {
+          return line
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;') + '\n';
+        }
+        
+        // Headers
+        if (trimmed.startsWith('### ')) {
+          const header = `<h3>${trimmed.substring(4)}</h3>`;
+          if (inList) {
+            inList = false;
+            return '</ul>' + header;
+          }
+          return header;
+        }
+        if (trimmed.startsWith('## ')) {
+          const header = `<h2>${trimmed.substring(3)}</h2>`;
+          if (inList) {
+            inList = false;
+            return '</ul>' + header;
+          }
+          return header;
+        }
+        if (trimmed.startsWith('# ')) {
+          const header = `<h1>${trimmed.substring(2)}</h1>`;
+          if (inList) {
+            inList = false;
+            return '</ul>' + header;
+          }
+          return header;
+        }
+        
+        // List items
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const item = `<li>${trimmed.substring(2)}</li>`;
+          if (!inList) {
+            inList = true;
+            return '<ul>' + item;
+          }
+          return item;
+        }
+        
+        // Empty lines
+        if (!trimmed) {
+          if (inList) {
+            inList = false;
+            return '</ul>';
+          }
+          return '';
+        }
+        
+        // Regular paragraphs
+        const paragraph = `<p>${line}</p>`;
+        if (inList) {
+          inList = false;
+          return '</ul>' + paragraph;
+        }
+        return paragraph;
       })
       .join('\n');
 
@@ -52,7 +116,7 @@ export default function ExportTab({ notes, summary, title }) {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
               line-height: 1.6; 
               padding: 40px; 
-              color: #111; 
+              color: #1f2937; 
               max-width: 800px;
               margin: 0 auto;
             }
@@ -60,10 +124,12 @@ export default function ExportTab({ notes, summary, title }) {
             h2 { font-size: 20px; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-top: 30px; color: #312e81; }
             h3 { font-size: 16px; margin-top: 20px; color: #4338ca; }
             p { margin-bottom: 15px; text-align: justify; }
+            ul { margin-bottom: 15px; padding-left: 20px; }
             li { margin-bottom: 8px; }
-            pre { background: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; }
+            pre { background: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; margin: 15px 0; border: 1px solid #e5e7eb; }
             code { font-family: monospace; background: #f3f4f6; padding: 2px 4px; border-radius: 4px; font-size: 13px; }
-            .meta { font-size: 13px; color: #666; margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+            pre code { background: none; padding: 0; }
+            .meta { font-size: 13px; color: #6b7280; margin-bottom: 30px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
           </style>
         </head>
         <body>

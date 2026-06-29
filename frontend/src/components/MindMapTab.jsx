@@ -57,11 +57,38 @@ export default function MindMapTab({ mindMap, onNodeClick }) {
 
   // Map links to lines with calculated coordinates
   const links = useMemo(() => {
-    if (!mindMap || !mindMap.links || positionedNodes.length === 0) return [];
+    if (!mindMap || !mindMap.links || Object.keys(positionedNodes).length === 0) return [];
 
     return mindMap.links.map((link, idx) => {
-      const sourceNode = positionedNodes[link.source];
-      const targetNode = positionedNodes[link.target];
+      // Resolve source node (can be string ID, array index, or string of array index)
+      let sourceNode = positionedNodes[link.source];
+      if (!sourceNode) {
+        if (typeof link.source === 'number') {
+          const nodeAtIdx = mindMap.nodes[link.source];
+          if (nodeAtIdx) sourceNode = positionedNodes[nodeAtIdx.id];
+        } else if (typeof link.source === 'string') {
+          const idxVal = parseInt(link.source, 10);
+          if (!isNaN(idxVal) && idxVal >= 0 && idxVal < mindMap.nodes.length) {
+            const nodeAtIdx = mindMap.nodes[idxVal];
+            if (nodeAtIdx) sourceNode = positionedNodes[nodeAtIdx.id];
+          }
+        }
+      }
+
+      // Resolve target node (can be string ID, array index, or string of array index)
+      let targetNode = positionedNodes[link.target];
+      if (!targetNode) {
+        if (typeof link.target === 'number') {
+          const nodeAtIdx = mindMap.nodes[link.target];
+          if (nodeAtIdx) targetNode = positionedNodes[nodeAtIdx.id];
+        } else if (typeof link.target === 'string') {
+          const idxVal = parseInt(link.target, 10);
+          if (!isNaN(idxVal) && idxVal >= 0 && idxVal < mindMap.nodes.length) {
+            const nodeAtIdx = mindMap.nodes[idxVal];
+            if (nodeAtIdx) targetNode = positionedNodes[nodeAtIdx.id];
+          }
+        }
+      }
 
       if (!sourceNode || !targetNode) return null;
 
