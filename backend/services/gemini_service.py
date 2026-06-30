@@ -79,7 +79,7 @@ class GeminiService:
     @classmethod
     def analyze_content(cls, api_key: str, transcript_text: str = None, media_file_path: str = None) -> dict:
         """
-        Runs a comprehensive analysis on the transcript or media file using Gemini 1.5 Flash.
+        Runs a comprehensive analysis on the transcript or media file using Gemini.
         Returns a structured JSON containing summary, tags, notes, timestamps, tasks, mind map, quiz, and flashcards.
         """
         client = cls._get_client(api_key)
@@ -105,41 +105,51 @@ class GeminiService:
             uploaded_file = client.files.upload(file=media_file_path)
             
             # Wait for file processing if needed
-            while uploaded_file.state.name == "PROCESSING":
+            while str(uploaded_file.state) == "PROCESSING" or getattr(uploaded_file.state, 'name', '') == "PROCESSING":
                 print("Waiting for file to be processed by Gemini...")
                 time.sleep(2)
                 uploaded_file = client.files.get(name=uploaded_file.name)
             
-            if uploaded_file.state.name == "FAILED":
+            if str(uploaded_file.state) == "FAILED" or getattr(uploaded_file.state, 'name', '') == "FAILED":
                 raise Exception("Gemini file processing failed")
                 
             print("File upload to Gemini complete.")
             contents.append(uploaded_file)
             contents.append(prompt)
         elif transcript_text:
-            contents.append(f"{prompt}\n\nTRANSCRIPT:\n{transcript_text}")
+            # Optimize output tokens by instructing the model to set transcript_chunks to [] since we already have the raw transcript
+            contents.append(f"{prompt}\n\nTRANSCRIPT:\n{transcript_text}\n\nNOTE: Since the text transcript is already provided, set the 'transcript_chunks' field in the schema to an empty list [] to save output tokens and prevent response truncation.")
         else:
             raise ValueError("Either transcript_text or media_file_path must be provided")
 
-        # Generate content with Pydantic output schema
-        try:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=VideoAnalysisResult
+        # Generate content with Pydantic output schema (resilient fallback model selection)
+        response = None
+        last_err = None
+        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
+            try:
+                print(f"Calling Gemini generate_content using model: {model_name}...")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        response_mime_type="application/json",
+                        response_schema=VideoAnalysisResult
+                    )
                 )
-            )
-        except Exception as e:
-            print(f"Failed to generate content: {str(e)}")
+                break
+            except Exception as e:
+                print(f"Failed to generate content with model {model_name}: {str(e)}")
+                last_err = e
+                continue
+                
+        if not response:
             try:
                 models = [m.name for m in client.models.list()]
                 print(f"Available models for this API key: {models}")
             except Exception as list_err:
                 print(f"Failed to list models: {str(list_err)}")
-            raise e
+            raise last_err
         
         # Clean up Gemini uploaded file if it was uploaded
         if media_file_path and 'uploaded_file' in locals():
