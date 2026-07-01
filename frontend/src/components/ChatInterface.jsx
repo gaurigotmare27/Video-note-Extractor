@@ -46,7 +46,7 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
         body: JSON.stringify({
           video_id: videoId,
           query: userMessage.content,
-          api_key: apiKey,
+          api_key: apiKey.trim(),
           history: historyToSend
         })
       });

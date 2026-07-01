@@ -34,7 +34,7 @@ export default function App() {
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) {
-      setApiKey(savedKey);
+      setApiKey(savedKey.trim());
     }
   }, []);
 

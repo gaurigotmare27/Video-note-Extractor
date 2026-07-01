@@ -24,7 +24,7 @@ export default function MediaInput({ onProcessStart, onProcessSuccess, onProcess
       const response = await fetch('/api/process-youtube', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim(), api_key: apiKey }),
+        body: JSON.stringify({ url: url.trim(), api_key: apiKey.trim() }),
       });
 
       if (!response.ok) {
@@ -55,7 +55,7 @@ export default function MediaInput({ onProcessStart, onProcessSuccess, onProcess
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('api_key', apiKey);
+    formData.append('api_key', apiKey.trim());
 
     try {
       const response = await fetch('/api/process-upload', {

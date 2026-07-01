@@ -1,10 +1,23 @@
 import os
+import sys
 import shutil
 import uuid
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
+
+# Reconfigure stdout/stderr to use UTF-8 on Windows to prevent encoding issues with Unicode prints
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+# Load environment variables
+load_dotenv()
 
 # Import services
 from services.youtube_service import YouTubeService
@@ -39,19 +52,44 @@ class ChatRequest(BaseModel):
     api_key: str
     history: List[ChatMessage]
 
-def validate_api_key(api_key: str):
-    if not api_key:
-        raise HTTPException(status_code=400, detail="Gemini API Key is required. Please enter a valid key in the top-right header field.")
-    key_lower = api_key.lower()
-    if "dummy" in key_lower or "placeholder" in key_lower or "your_api_key" in key_lower or api_key == "AIzaSyDummyKey12345":
+def validate_api_key(api_key: Optional[str]) -> str:
+    cleaned_key = api_key.strip() if api_key else ""
+    is_dummy = (
+        not cleaned_key
+        or "dummy" in cleaned_key.lower()
+        or "placeholder" in cleaned_key.lower()
+        or "your_api_key" in cleaned_key.lower()
+        or cleaned_key == "AIzaSyDummyKey12345"
+    )
+    
+    if is_dummy:
+        env_key = os.environ.get("GEMINI_API_KEY")
+        if env_key:
+            env_key = env_key.strip()
+            env_is_dummy = (
+                "dummy" in env_key.lower()
+                or "placeholder" in env_key.lower()
+                or "your_api_key" in env_key.lower()
+                or env_key == "AIzaSyDummyKey12345"
+            )
+            if not env_is_dummy:
+                return env_key
+                
+    if not cleaned_key:
         raise HTTPException(
             status_code=400,
-            detail="Invalid API Key: You are using a dummy or placeholder API key. Please enter a valid Gemini API Key in the top-right header input field."
+            detail="Gemini API Key is required. Please enter a valid key in the top-right header field or set GEMINI_API_KEY in the backend environment."
         )
+    if is_dummy:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid API Key: You are using a dummy or placeholder API key. Please enter a valid Gemini API Key."
+        )
+    return cleaned_key
 
 @app.post("/api/process-youtube")
 async def process_youtube(req: YouTubeRequest):
-    validate_api_key(req.api_key)
+    api_key = validate_api_key(req.api_key)
     try:
         video_id = YouTubeService.extract_video_id(req.url)
     except ValueError as e:
@@ -74,10 +112,10 @@ async def process_youtube(req: YouTubeRequest):
         
         try:
             # Send text transcript to Gemini for analysis
-            analysis = GeminiService.analyze_content(api_key=req.api_key, transcript_text=transcript_text)
+            analysis = GeminiService.analyze_content(api_key=api_key, transcript_text=transcript_text)
             
             # Index transcript in RAG
-            chunks_indexed = RAGService.index_transcript(video_id, transcript, req.api_key)
+            chunks_indexed = RAGService.index_transcript(video_id, transcript, api_key)
             print(f"Indexed {chunks_indexed} RAG chunks from transcript for {video_id}")
             
             # Add video metadata to response
@@ -86,6 +124,11 @@ async def process_youtube(req: YouTubeRequest):
             analysis["has_player"] = True
             return analysis
         except Exception as e:
+            if "API key not valid" in str(e) or "API_KEY_INVALID" in str(e):
+                raise HTTPException(
+                    status_code=400,
+                    detail="The provided Gemini API Key is invalid or expired. Please check your key in the header input field or your backend environment variable."
+                )
             raise HTTPException(status_code=500, detail=f"Gemini analysis failed: {str(e)}")
             
     else:
@@ -98,7 +141,7 @@ async def process_youtube(req: YouTubeRequest):
             
         print(f"Audio downloaded to {audio_path}. Uploading to Gemini Files API...")
         try:
-            analysis = GeminiService.analyze_content(api_key=req.api_key, media_file_path=audio_path)
+            analysis = GeminiService.analyze_content(api_key=api_key, media_file_path=audio_path)
             
             # Index RAG from Gemini generated chunks
             chunks = analysis.get("transcript_chunks", [])
@@ -112,7 +155,7 @@ async def process_youtube(req: YouTubeRequest):
                     "duration": end - start
                 })
             
-            chunks_indexed = RAGService.index_transcript(video_id, rag_transcript, req.api_key)
+            chunks_indexed = RAGService.index_transcript(video_id, rag_transcript, api_key)
             print(f"Indexed {chunks_indexed} RAG chunks from Gemini audio transcription for {video_id}")
             
             # Keep audio file in storage so player can play it or just delete it to save space?
@@ -129,6 +172,11 @@ async def process_youtube(req: YouTubeRequest):
             analysis["has_player"] = True
             return analysis
         except Exception as e:
+            if "API key not valid" in str(e) or "API_KEY_INVALID" in str(e):
+                raise HTTPException(
+                    status_code=400,
+                    detail="The provided Gemini API Key is invalid or expired. Please check your key in the header input field or your backend environment variable."
+                )
             raise HTTPException(status_code=500, detail=f"Gemini multimodal analysis failed: {str(e)}")
 
 
@@ -137,7 +185,7 @@ async def process_upload(
     file: UploadFile = File(...),
     api_key: str = Form(...)
 ):
-    validate_api_key(api_key)
+    cleaned_api_key = validate_api_key(api_key)
     # Generate unique ID for this upload
     video_id = str(uuid.uuid4())
     ext = file.filename.split(".")[-1]
@@ -153,7 +201,7 @@ async def process_upload(
         
     try:
         # Analyze file using Gemini Files API
-        analysis = GeminiService.analyze_content(api_key=api_key, media_file_path=saved_path)
+        analysis = GeminiService.analyze_content(api_key=cleaned_api_key, media_file_path=saved_path)
         
         # Index RAG from Gemini generated chunks
         chunks = analysis.get("transcript_chunks", [])
@@ -167,7 +215,7 @@ async def process_upload(
                 "duration": end - start
             })
             
-        chunks_indexed = RAGService.index_transcript(video_id, rag_transcript, api_key)
+        chunks_indexed = RAGService.index_transcript(video_id, rag_transcript, cleaned_api_key)
         print(f"Indexed {chunks_indexed} RAG chunks from uploaded file transcription for {video_id}")
         
         analysis["video_id"] = video_id
@@ -179,14 +227,19 @@ async def process_upload(
         # Clean up file on failure
         if os.path.exists(saved_path):
             os.remove(saved_path)
+        if "API key not valid" in str(e) or "API_KEY_INVALID" in str(e):
+            raise HTTPException(
+                status_code=400,
+                detail="The provided Gemini API Key is invalid or expired. Please check your key in the header input field or your backend environment variable."
+            )
         raise HTTPException(status_code=500, detail=f"Gemini multimodal analysis failed: {str(e)}")
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    validate_api_key(req.api_key)
+    cleaned_api_key = validate_api_key(req.api_key)
     # Retrieve relevant transcript chunks
-    relevant_chunks = RAGService.search(req.video_id, req.query, req.api_key, top_k=5)
+    relevant_chunks = RAGService.search(req.video_id, req.query, cleaned_api_key, top_k=5)
     
     if not relevant_chunks:
         # Try a fallback of searching the transcript in memory without embeddings if indexing failed
@@ -207,13 +260,18 @@ async def chat(req: ChatRequest):
         history_list = [{"role": m.role, "content": m.content} for m in req.history]
         
         answer = GeminiService.generate_chat_answer(
-            api_key=req.api_key,
+            api_key=cleaned_api_key,
             query=req.query,
             context=context,
             history=history_list
         )
         return {"answer": answer}
     except Exception as e:
+        if "API key not valid" in str(e) or "API_KEY_INVALID" in str(e):
+            raise HTTPException(
+                status_code=400,
+                detail="The provided Gemini API Key is invalid or expired. Please check your key in the header input field or your backend environment variable."
+            )
         raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
 
 # Optional endpoint to stream uploaded files locally

@@ -4,7 +4,7 @@ export default function Header({ apiKey, setApiKey }) {
   const [showKey, setShowKey] = useState(false);
 
   const handleKeyChange = (e) => {
-    const key = e.target.value;
+    const key = e.target.value.trim();
     setApiKey(key);
     localStorage.setItem('gemini_api_key', key);
   };
