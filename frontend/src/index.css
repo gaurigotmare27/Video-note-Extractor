@@ -546,10 +546,26 @@ body::after {
 .tabs-header {
   display: flex;
   overflow-x: auto;
+  position: sticky;
+  top: -24px; /* offset the top padding of parent .glass-panel */
+  background: var(--panel-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 10;
+  margin-top: -24px;
+  padding-top: 24px;
+  padding-bottom: 12px;
   border-bottom: 1.5px solid rgba(0, 0, 0, 0.08);
   margin-bottom: 24px;
   gap: 6px;
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
+
+.tabs-header::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
 
 .tab-btn {
   background: transparent;
@@ -579,6 +595,7 @@ body::after {
 
 .tab-content {
   flex-grow: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
 }

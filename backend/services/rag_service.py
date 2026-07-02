@@ -76,14 +76,29 @@ class RAGService:
         indexed_chunks = []
         for chunk in chunks:
             try:
-                embedding = GeminiService.get_embedding(api_key, chunk["text"])
-                chunk["embedding"] = embedding
-                indexed_chunks.append(chunk)
+                if api_key == "demo":
+                    chunk["embedding"] = None
+                else:
+                    embedding = GeminiService.get_embedding(api_key, chunk["text"])
+                    chunk["embedding"] = embedding
             except Exception as e:
                 print(f"Failed to index chunk '{chunk['text'][:30]}...': {str(e)}")
-                # Continue index fallback with dummy or skip
-                continue
+                chunk["embedding"] = None
+            indexed_chunks.append(chunk)
 
+        cls._index[video_id] = indexed_chunks
+        return len(indexed_chunks)
+
+    @classmethod
+    def index_demo_chunks(cls, video_id: str, chunks: list) -> int:
+        """
+        Manually indexes demo transcript chunks with dummy/empty embeddings for keyword search fallback.
+        """
+        indexed_chunks = []
+        for chunk in chunks:
+            c = dict(chunk)
+            c["embedding"] = None
+            indexed_chunks.append(c)
         cls._index[video_id] = indexed_chunks
         return len(indexed_chunks)
 
@@ -96,19 +111,41 @@ class RAGService:
             print(f"Video {video_id} is not indexed in RAG.")
             return []
 
-        try:
-            query_embedding = GeminiService.get_embedding(api_key, query)
-        except Exception as e:
-            print(f"Failed to embed query: {str(e)}")
-            return []
-
         scored_chunks = []
-        for chunk in cls._index[video_id]:
-            sim = cls._cosine_similarity(query_embedding, chunk["embedding"])
-            scored_chunks.append((sim, chunk))
+        use_keyword_fallback = False
 
-        # Sort by similarity descending
+        if api_key == "demo":
+            use_keyword_fallback = True
+        else:
+            try:
+                query_embedding = GeminiService.get_embedding(api_key, query)
+                for chunk in cls._index[video_id]:
+                    if "embedding" in chunk and chunk["embedding"] is not None:
+                        sim = cls._cosine_similarity(query_embedding, chunk["embedding"])
+                        scored_chunks.append((sim, chunk))
+                    else:
+                        scored_chunks.append((0.0, chunk))
+            except Exception as e:
+                print(f"Failed to embed query or compute similarity: {str(e)}. Falling back to keyword matching.")
+                use_keyword_fallback = True
+
+        if use_keyword_fallback or not scored_chunks or all(score == 0.0 for score, _ in scored_chunks):
+            scored_chunks = []
+            query_words = set(query.lower().split())
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'from', 'up', 'down', 'in', 'out', 'off', 'over', 'under', 'again', 'further', 'then', 'once'}
+            keywords = [w for w in query_words if w not in stop_words and len(w) > 2]
+            if not keywords:
+                keywords = list(query_words)
+            
+            for chunk in cls._index[video_id]:
+                chunk_text_lower = chunk["text"].lower()
+                # Score based on keyword counts
+                score = sum(1.0 for kw in keywords if kw in chunk_text_lower)
+                scored_chunks.append((score, chunk))
+
+        # Sort by similarity/score descending
         scored_chunks.sort(key=lambda x: x[0], reverse=True)
         
         # Return top_k
         return [chunk for score, chunk in scored_chunks[:top_k]]
+
