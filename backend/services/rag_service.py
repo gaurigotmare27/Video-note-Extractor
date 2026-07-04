@@ -5,6 +5,9 @@ class RAGService:
     # Class-level in-memory database to store indexed transcripts:
     # { video_id: [ {"text": str, "start": float, "end": float, "embedding": list[float]} ] }
     _index = {}
+    
+    # Class-level variable to store the model that successfully generated embeddings
+    _active_embedding_model = None
 
     @staticmethod
     def _dot_product(v1: list, v2: list) -> float:
@@ -72,22 +75,26 @@ class RAGService:
                 "end": current_end,
             })
 
-        # Compute embeddings for all chunks
-        indexed_chunks = []
-        for chunk in chunks:
+        # Compute embeddings for all chunks in batches
+        if api_key == "demo":
+            for chunk in chunks:
+                chunk["embedding"] = None
+        else:
+            texts_to_embed = [chunk["text"] for chunk in chunks]
             try:
-                if api_key == "demo":
-                    chunk["embedding"] = None
-                else:
-                    embedding = GeminiService.get_embedding(api_key, chunk["text"])
+                embeddings, successful_model = GeminiService.get_embeddings(api_key, texts_to_embed)
+                if successful_model:
+                    cls._active_embedding_model = successful_model
+                    print(f"Successfully generated embeddings using model: {successful_model}")
+                for chunk, embedding in zip(chunks, embeddings):
                     chunk["embedding"] = embedding
             except Exception as e:
-                print(f"Failed to index chunk '{chunk['text'][:30]}...': {str(e)}")
-                chunk["embedding"] = None
-            indexed_chunks.append(chunk)
+                print(f"Failed to generate batch embeddings: {str(e)}. Defaulting all chunk embeddings to None.")
+                for chunk in chunks:
+                    chunk["embedding"] = None
 
-        cls._index[video_id] = indexed_chunks
-        return len(indexed_chunks)
+        cls._index[video_id] = chunks
+        return len(chunks)
 
     @classmethod
     def index_demo_chunks(cls, video_id: str, chunks: list) -> int:
@@ -118,7 +125,8 @@ class RAGService:
             use_keyword_fallback = True
         else:
             try:
-                query_embedding = GeminiService.get_embedding(api_key, query)
+                model_to_use = cls._active_embedding_model or "text-embedding-004"
+                query_embedding = GeminiService.get_embedding(api_key, query, model_name=model_to_use)
                 for chunk in cls._index[video_id]:
                     if "embedding" in chunk and chunk["embedding"] is not None:
                         sim = cls._cosine_similarity(query_embedding, chunk["embedding"])

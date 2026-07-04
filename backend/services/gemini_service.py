@@ -170,19 +170,72 @@ class GeminiService:
             raise Exception("Gemini returned invalid structured output. Please retry.")
 
     @classmethod
-    def get_embedding(cls, api_key: str, text: str) -> list:
+    def get_embedding(cls, api_key: str, text: str, model_name: str = None) -> list:
         """
-        Generates an embedding vector using text-embedding-004.
+        Generates an embedding vector using the specified model or text-embedding-004.
         """
         client = cls._get_client(api_key)
+        model = model_name or "text-embedding-004"
         response = client.models.embed_content(
-            model="text-embedding-004",
+            model=model,
             contents=text,
             config=types.EmbedContentConfig(
                 task_type="RETRIEVAL_DOCUMENT"
             )
         )
         return response.embeddings[0].values
+
+    @classmethod
+    def get_embeddings(cls, api_key: str, texts: List[str]) -> tuple[list, str]:
+        """
+        Generates embedding vectors for a list of texts in batches,
+        with fallback models to ensure robust performance.
+        Returns a tuple of (embeddings_list, successful_model_name).
+        """
+        if not texts:
+            return [], None
+            
+        client = cls._get_client(api_key)
+        embeddings = [None] * len(texts)
+        
+        # We will try these models in order
+        candidate_models = ["text-embedding-004", "gemini-embedding-2", "gemini-embedding-001"]
+        successful_model = None
+        
+        # Batch size of 100 is safe and efficient
+        batch_size = 100
+        
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i+batch_size]
+            success = False
+            
+            # If we already found a successful model in a previous batch, try that first
+            models_to_try = [successful_model] + [m for m in candidate_models if m != successful_model] if successful_model else candidate_models
+            
+            for model_name in models_to_try:
+                if not model_name:
+                    continue
+                try:
+                    response = client.models.embed_content(
+                        model=model_name,
+                        contents=batch_texts,
+                        config=types.EmbedContentConfig(
+                            task_type="RETRIEVAL_DOCUMENT"
+                        )
+                    )
+                    for idx, emb in enumerate(response.embeddings):
+                        embeddings[i + idx] = emb.values
+                    success = True
+                    successful_model = model_name
+                    break
+                except Exception as e:
+                    print(f"Failed to generate batch embeddings for slice {i} to {i+batch_size} using {model_name}: {str(e)}")
+                    continue
+            
+            if not success:
+                print(f"All candidate embedding models failed for slice {i} to {i+batch_size}.")
+                
+        return embeddings, successful_model
 
     @classmethod
     def generate_chat_answer(cls, api_key: str, query: str, context: str, history: list) -> str:
