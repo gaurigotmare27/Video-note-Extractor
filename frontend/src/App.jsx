@@ -55,7 +55,7 @@ export default function App() {
       setVideoId(data.video_id);
       setFilePath('');
     } else {
-      setVideoId('');
+      setVideoId(data.video_id);
       setFilePath(data.file_path);
     }
     setActiveTab('dashboard');
@@ -105,7 +105,7 @@ export default function App() {
           />
 
           <ChatInterface 
-            videoId={videoId || filePath}
+            videoId={videoId}
             apiKey={apiKey}
             onSeek={handleSeek}
           />

@@ -206,17 +206,40 @@ class GeminiService:
         formatted_history = []
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
-            formatted_history.append({"role": role, "parts": [msg["content"]]})
+            formatted_history.append(
+                types.Content(
+                    role=role,
+                    parts=[types.Part(text=msg["content"])]
+                )
+            )
 
         # Add the context and current query to the conversation
         prompt = f"CONTEXT SEGMENTS:\n{context}\n\nUSER QUESTION: {query}"
-        formatted_history.append({"role": "user", "parts": [prompt]})
-
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=formatted_history,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction
+        formatted_history.append(
+            types.Content(
+                role="user",
+                parts=[types.Part(text=prompt)]
             )
         )
+
+        response = None
+        last_err = None
+        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=formatted_history,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction
+                    )
+                )
+                break
+            except Exception as e:
+                print(f"Failed to generate chat answer with model {model_name}: {str(e)}")
+                last_err = e
+                continue
+                
+        if not response:
+            raise last_err
+            
         return response.text
