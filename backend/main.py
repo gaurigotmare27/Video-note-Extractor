@@ -40,7 +40,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 class YouTubeRequest(BaseModel):
     url: str
-    api_key: str
 
 class ChatMessage(BaseModel):
     role: str
@@ -49,47 +48,22 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     video_id: str
     query: str
-    api_key: str
     history: List[ChatMessage]
 
-def validate_api_key(api_key: Optional[str]) -> str:
-    cleaned_key = api_key.strip() if api_key else ""
-    is_dummy = (
-        not cleaned_key
-        or "dummy" in cleaned_key.lower()
-        or "placeholder" in cleaned_key.lower()
-        or "your_api_key" in cleaned_key.lower()
-        or cleaned_key == "AIzaSyDummyKey12345"
-    )
-    
-    if is_dummy:
-        env_key = os.environ.get("GEMINI_API_KEY")
-        if env_key:
-            env_key = env_key.strip()
-            env_is_dummy = (
-                "dummy" in env_key.lower()
-                or "placeholder" in env_key.lower()
-                or "your_api_key" in env_key.lower()
-                or env_key == "AIzaSyDummyKey12345"
-            )
-            if not env_is_dummy:
-                return env_key
-                
-    if not cleaned_key:
+def get_api_key() -> str:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+    if not api_key:
         raise HTTPException(
-            status_code=400,
-            detail="Gemini API Key is required. Please enter a valid key in the top-right header field or set GEMINI_API_KEY in the backend environment."
+            status_code=500,
+            detail="Gemini API key is not configured on the server."
         )
-    if is_dummy:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid API Key: You are using a dummy or placeholder API key. Please enter a valid Gemini API Key."
-        )
-    return cleaned_key
+
+    return api_key
 
 @app.post("/api/process-youtube")
 async def process_youtube(req: YouTubeRequest):
-    api_key = validate_api_key(req.api_key)
+    api_key = get_api_key()
     try:
         video_id = YouTubeService.extract_video_id(req.url)
     except ValueError as e:
@@ -180,12 +154,12 @@ async def process_youtube(req: YouTubeRequest):
             raise HTTPException(status_code=500, detail=f"Gemini multimodal analysis failed: {str(e)}")
 
 
+
 @app.post("/api/process-upload")
 async def process_upload(
-    file: UploadFile = File(...),
-    api_key: str = Form(...)
+    file: UploadFile = File(...)
 ):
-    cleaned_api_key = validate_api_key(api_key)
+    cleaned_api_key = get_api_key()
     # Generate unique ID for this upload
     video_id = str(uuid.uuid4())
     ext = file.filename.split(".")[-1]
@@ -237,7 +211,7 @@ async def process_upload(
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    cleaned_api_key = validate_api_key(req.api_key)
+    cleaned_api_key = get_api_key()
     # Retrieve relevant transcript chunks
     relevant_chunks = RAGService.search(req.video_id, req.query, cleaned_api_key, top_k=5)
     

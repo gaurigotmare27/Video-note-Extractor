@@ -125,7 +125,7 @@ class GeminiService:
         # Generate content with Pydantic output schema (resilient fallback model selection)
         response = None
         last_err = None
-        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
+        for model_name in ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-lite-latest"]:
             try:
                 print(f"Calling Gemini generate_content using model: {model_name}...")
                 response = client.models.generate_content(
@@ -277,7 +277,7 @@ class GeminiService:
 
         response = None
         last_err = None
-        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
+        for model_name in ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-lite-latest"]:
             try:
                 response = client.models.generate_content(
                     model=model_name,

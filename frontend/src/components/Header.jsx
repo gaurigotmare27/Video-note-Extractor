@@ -17,8 +17,11 @@ export default function Header({ apiKey, setApiKey }) {
         <div className="logo-icon">⚡</div>
         <div className="logo-title">Video Note Extractor</div>
       </div>
-      
-      <div className="api-key-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+
+      <div
+        className="api-key-wrapper"
+        style={{ display: 'none' }}
+      >
         <div className="api-key-container" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <label htmlFor="api-key-input" style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
             Gemini API Key:
