@@ -1,223 +1,378 @@
-import re
+
 import os
+import re
+import glob
 import yt_dlp
+
 from youtube_transcript_api import YouTubeTranscriptApi
 
+
 class YouTubeService:
+
     @staticmethod
     def extract_video_id(url: str) -> str:
         """
-        Extracts the video ID from a YouTube URL.
-        Supports standard, share, shorts, and embed formats.
+        Extracts the video ID from standard, share, shorts,
+        live, and embed YouTube URLs.
         """
-        reg = r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|live)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})'
+        reg = (
+            r'(?:youtube\.com/(?:[^/]+/.+/|'
+            r'(?:v|e(?:mbed)?|shorts|live)/|.*[?&]v=)|'
+            r'youtu\.be/)([^"&?/\s]{11})'
+        )
+
         match = re.search(reg, url)
+
         if match:
             return match.group(1)
+
         raise ValueError("Invalid YouTube URL")
 
     @classmethod
     def get_transcript(cls, video_id: str) -> list:
         """
-        Fetches the transcript for a YouTube video.
-        Uses youtube-transcript-api first, then falls back to yt-dlp subtitle download.
-        Returns a list of dicts: [{'text': str, 'start': float, 'duration': float}]
+        Fetches a YouTube transcript using youtube-transcript-api.
+        If that fails, tries yt-dlp subtitle download.
+
+        Returns:
+            List of dictionaries containing text, start, duration,
+            or None if a transcript cannot be retrieved.
         """
         raw_transcript = None
+
         try:
             api = YouTubeTranscriptApi()
+
+            # Attempt 1: Fetch English captions.
             try:
-                # 1. Try to fetch English transcript (manual or auto-generated)
-                raw_transcript = api.fetch(video_id, languages=('en', 'en-US', 'en-GB'))
-            except Exception:
+                raw_transcript = api.fetch(
+                    video_id,
+                    languages=["en", "en-US", "en-GB"]
+                )
+            except Exception as english_error:
+                print(
+                    f"English transcript unavailable for "
+                    f"{video_id}: {english_error}"
+                )
+
+                # Attempt 2: Use another available language.
                 try:
-                    # 2. Fallback: Find any available transcript and translate to English
                     transcript_list = api.list(video_id)
                     first_transcript = next(iter(transcript_list))
-                    if first_transcript.language_code not in ('en', 'en-US', 'en-GB'):
+
+                    if first_transcript.language_code not in (
+                        "en", "en-US", "en-GB"
+                    ):
                         try:
-                            raw_transcript = first_transcript.translate('en').fetch()
+                            raw_transcript = (
+                                first_transcript.translate("en").fetch()
+                            )
                         except Exception:
                             raw_transcript = first_transcript.fetch()
                     else:
                         raw_transcript = first_transcript.fetch()
-                except Exception as e:
-                    print(f"Transcript fallback failed for {video_id}: {e}")
-                    raw_transcript = None
-        except Exception as e:
-            print(f"Error fetching transcript via youtube-transcript-api for {video_id}: {str(e)}")
 
+                except Exception as fallback_error:
+                    print(
+                        f"Transcript fallback failed for "
+                        f"{video_id}: {fallback_error}"
+                    )
+
+        except Exception as error:
+            print(
+                f"Transcript API failed for {video_id}: {error}"
+            )
+
+        # Normalize transcript objects into dictionaries.
         if raw_transcript:
             normalized = []
+
             for item in raw_transcript:
                 if isinstance(item, dict):
-                    normalized.append(item)
+                    normalized.append({
+                        "text": item.get("text", ""),
+                        "start": float(item.get("start", 0.0)),
+                        "duration": float(item.get("duration", 0.0))
+                    })
                 else:
                     normalized.append({
-                        'text': getattr(item, 'text', ''),
-                        'start': getattr(item, 'start', 0.0),
-                        'duration': getattr(item, 'duration', 0.0)
+                        "text": getattr(item, "text", ""),
+                        "start": float(getattr(item, "start", 0.0)),
+                        "duration": float(
+                            getattr(item, "duration", 0.0)
+                        )
                     })
-            return normalized
 
-        # 3. If youtube-transcript-api failed, try yt-dlp subtitle download
-        print(f"youtube-transcript-api failed for {video_id}. Trying yt-dlp subtitle fallback...")
-        yt_transcript = cls.get_transcript_via_ytdl(video_id)
-        if yt_transcript:
-            return yt_transcript
+            if normalized:
+                return normalized
 
-        return None
+        # Attempt 3: Download subtitles with yt-dlp.
+        print(
+            f"No transcript from transcript API for {video_id}. "
+            "Trying yt-dlp subtitles..."
+        )
+
+        return cls.get_transcript_via_ytdl(video_id)
 
     @classmethod
     def parse_vtt(cls, filepath: str) -> list:
         """
-        Parses a WebVTT file and returns a structured transcript list.
+        Parses a WebVTT subtitle file into transcript entries.
         """
-        import re
         transcript = []
+
+        def to_seconds(timestamp: str) -> float:
+            parts = timestamp.replace(",", ".").split(":")
+            return sum(
+                float(value) * (60 ** index)
+                for index, value in enumerate(reversed(parts))
+            )
+
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            blocks = re.split(r'\n\s*\n', content)
-            timestamp_pattern = re.compile(r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})')
-            
-            to_secs = lambda t: sum(float(x) * 60**i for i, x in enumerate(reversed(t.split(':'))))
-            
+            with open(filepath, "r", encoding="utf-8-sig") as file:
+                content = file.read()
+
+            blocks = re.split(r"\n\s*\n", content)
+
+            timestamp_pattern = re.compile(
+                r"(?:(\d{2,}:)?(\d{2}):(\d{2})[.,](\d{3}))"
+                r"\s*-->\s*"
+                r"(?:(\d{2,}:)?(\d{2}):(\d{2})[.,](\d{3}))"
+            )
+
             for block in blocks:
-                lines = block.strip().split('\n')
+                lines = block.strip().splitlines()
+
                 if not lines:
                     continue
-                
-                match = timestamp_pattern.search(lines[0])
-                text_lines = lines[1:]
-                if not match and len(lines) > 1:
-                    match = timestamp_pattern.search(lines[1])
-                    text_lines = lines[2:]
-                    
-                if match:
-                    start_str, end_str = match.groups()
-                    start_sec = to_secs(start_str)
-                    end_sec = to_secs(end_str)
-                    
-                    clean_text = " ".join(line.strip() for line in text_lines if line.strip())
-                    clean_text = re.sub(r'<[^>]+>', '', clean_text)
-                    
-                    if clean_text:
-                        transcript.append({
-                            'text': clean_text,
-                            'start': start_sec,
-                            'duration': end_sec - start_sec
-                        })
+
+                timestamp_index = None
+                match = None
+
+                for index, line in enumerate(lines):
+                    match = timestamp_pattern.search(line)
+                    if match:
+                        timestamp_index = index
+                        break
+
+                if match is None:
+                    continue
+
+                start_parts = match.groups()[:4]
+                end_parts = match.groups()[4:]
+
+                start_str = "".join(
+                    part or ""
+                    for part in start_parts
+                )
+                end_str = "".join(
+                    part or ""
+                    for part in end_parts
+                )
+
+                # Reconstruct standard timestamps.
+                def reconstruct(parts):
+                    hours, minutes, seconds, milliseconds = parts
+                    if hours:
+                        return (
+                            f"{hours.rstrip(':')}:"
+                            f"{minutes}:{seconds}.{milliseconds}"
+                        )
+                    return f"{minutes}:{seconds}.{milliseconds}"
+
+                start_sec = to_seconds(reconstruct(start_parts))
+                end_sec = to_seconds(reconstruct(end_parts))
+
+                text_lines = lines[timestamp_index + 1:]
+
+                clean_text = " ".join(
+                    line.strip() for line in text_lines if line.strip()
+                )
+
+                clean_text = re.sub(r"<[^>]+>", "", clean_text)
+                clean_text = re.sub(r"&amp;", "&", clean_text)
+                clean_text = re.sub(r"&lt;", "<", clean_text)
+                clean_text = re.sub(r"&gt;", ">", clean_text)
+
+                if clean_text:
+                    transcript.append({
+                        "text": clean_text,
+                        "start": start_sec,
+                        "duration": max(0.0, end_sec - start_sec)
+                    })
+
             return transcript if transcript else None
-        except Exception as e:
-            print(f"Error parsing VTT file {filepath}: {str(e)}")
+
+        except Exception as error:
+            print(f"Error parsing VTT file {filepath}: {error}")
             return None
 
     @classmethod
-    def get_transcript_via_ytdl(cls, video_id: str, output_dir: str = None) -> list:
+    def get_transcript_via_ytdl(
+        cls,
+        video_id: str,
+        output_dir: str = None
+    ) -> list:
         """
-        Fetches the transcript for a YouTube video using yt-dlp to download subtitles.
+        Attempts to download English subtitles using yt-dlp.
+        Falls back to other languages if English subtitles fail.
         """
-        import glob
-        
         if not output_dir:
-            # Save in the backend uploads folder
-            output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
-        
+            backend_dir = os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))
+            )
+            output_dir = os.path.join(backend_dir, "uploads")
+
         os.makedirs(output_dir, exist_ok=True)
-        
-        # Use a unique prefix to avoid naming collisions
-        temp_prefix = os.path.join(output_dir, f"temp_sub_{video_id}")
-        
-        ydl_opts = {
-            'skip_download': True,
-            'writesubtitles': True,
-            'writeautomaticsub': True,
-            'subtitleslangs': ['en'],
-            'outtmpl': f"{temp_prefix}.%(ext)s",
-            'quiet': True,
-            'no_warnings': True,
-        }
-        
+
+        temp_prefix = os.path.join(
+            output_dir, f"temp_sub_{video_id}"
+        )
+
+        subtitle_files = []
+
         try:
+            ydl_opts = {
+                "skip_download": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en", "en-US", "en-GB"],
+                "subtitlesformat": "vtt/best",
+                "outtmpl": f"{temp_prefix}.%(ext)s",
+                "quiet": True,
+                "no_warnings": True,
+                "ignoreerrors": False,
+            }
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-                
-            sub_files = glob.glob(f"{temp_prefix}.*")
-            if not sub_files:
-                # If English was unavailable, try downloading any language
-                ydl_opts['subtitleslangs'] = ['all']
+                ydl.download([
+                    f"https://www.youtube.com/watch?v={video_id}"
+                ])
+
+            subtitle_files = glob.glob(f"{temp_prefix}.*")
+
+            if not subtitle_files:
+                print(
+                    f"No English subtitles found for {video_id}; "
+                    "trying available languages..."
+                )
+
+                ydl_opts["subtitleslangs"] = ["all"]
+
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-                sub_files = glob.glob(f"{temp_prefix}.*")
-                
-            if not sub_files:
+                    ydl.download([
+                        f"https://www.youtube.com/watch?v={video_id}"
+                    ])
+
+                subtitle_files = glob.glob(f"{temp_prefix}.*")
+
+            vtt_files = [
+                path for path in subtitle_files
+                if path.lower().endswith(".vtt")
+            ]
+
+            if not vtt_files:
+                print(f"No VTT subtitle files found for {video_id}")
                 return None
-                
-            # Choose the first subtitle file found (prefer English if multiple)
-            filepath = sub_files[0]
-            for f in sub_files:
-                if '.en.' in f:
-                    filepath = f
-                    break
-                    
-            transcript = cls.parse_vtt(filepath)
-            
-            # Clean up all downloaded temp files
-            for f in sub_files:
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
-                    
-            return transcript
-            
-        except Exception as e:
-            print(f"Error downloading/parsing transcript via yt-dlp: {str(e)}")
-            for f in glob.glob(f"{temp_prefix}.*"):
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
+
+            # Prefer English subtitles.
+            filepath = next(
+                (
+                    path for path in vtt_files
+                    if re.search(r"\.en(?:[-_.]|\.|$)", path, re.I)
+                ),
+                vtt_files[0]
+            )
+
+            return cls.parse_vtt(filepath)
+
+        except Exception as error:
+            print(
+                f"yt-dlp subtitle retrieval failed for "
+                f"{video_id}: {error}"
+            )
             return None
 
+        finally:
+            # Always remove temporary subtitle files.
+            for path in glob.glob(f"{temp_prefix}.*"):
+                try:
+                    if os.path.isfile(path):
+                        os.remove(path)
+                except OSError as cleanup_error:
+                    print(
+                        f"Could not remove temporary subtitle file: "
+                        f"{cleanup_error}"
+                    )
+
     @classmethod
-    def download_audio(cls, video_id: str, output_dir: str) -> str:
+    def download_audio(
+        cls,
+        video_id: str,
+        output_dir: str
+    ) -> str:
         """
-        Downloads audio from a YouTube video using yt-dlp.
-        Returns the absolute path of the downloaded audio file.
-        Saves as raw format (m4a, webm) to avoid ffmpeg dependency.
+        Downloads YouTube audio when the server is permitted
+        to access it. Returns the downloaded file path.
         """
         os.makedirs(output_dir, exist_ok=True)
-        
-        # Check if file already exists in output_dir (any extension)
-        for ext in ['m4a', 'webm', 'mp3', 'opus']:
-            existing_path = os.path.join(output_dir, f"{video_id}.{ext}")
-            if os.path.exists(existing_path):
+
+        supported_extensions = [
+            "m4a", "webm", "mp3", "opus",
+            "ogg", "aac", "flac", "3gp"
+        ]
+
+        for ext in supported_extensions:
+            existing_path = os.path.join(
+                output_dir, f"{video_id}.{ext}"
+            )
+
+            if os.path.isfile(existing_path):
                 return existing_path
 
         ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': os.path.join(output_dir, f'{video_id}.%(ext)s'),
-            # No post-processing to avoid dependency on ffmpeg
-            'quiet': True,
-            'no_warnings': True,
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(
+                output_dir, f"{video_id}.%(ext)s"
+            ),
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
-            filename = ydl.prepare_filename(info)
-            # The prepared filename might have a slightly different extension depending on what was downloaded
-            # Verify the actual file exists
-            if os.path.exists(filename):
-                return filename
-            
-            # Fallback search if extension mismatch
-            base_path = os.path.join(output_dir, video_id)
-            for ext in ['m4a', 'webm', 'mp3', 'opus', '3gp', 'aac', 'flac', 'ogg']:
-                test_path = f"{base_path}.{ext}"
-                if os.path.exists(test_path):
-                    return test_path
-            
-            raise FileNotFoundError(f"Downloaded audio file not found for video ID: {video_id}")
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(
+                    f"https://www.youtube.com/watch?v={video_id}",
+                    download=True
+                )
+
+                if not info:
+                    raise RuntimeError(
+                        "YouTube did not return video information."
+                    )
+
+                filename = ydl.prepare_filename(info)
+
+                if os.path.isfile(filename):
+                    return filename
+
+                # Look for an output file with a different extension.
+                for ext in supported_extensions:
+                    candidate = os.path.join(
+                        output_dir, f"{video_id}.{ext}"
+                    )
+
+                    if os.path.isfile(candidate):
+                        return candidate
+
+                raise FileNotFoundError(
+                    f"Downloaded audio file not found for {video_id}"
+                )
+
+        except Exception as error:
+            print(
+                f"YouTube audio download failed for "
+                f"{video_id}: {error}"
+            )
+            raise
