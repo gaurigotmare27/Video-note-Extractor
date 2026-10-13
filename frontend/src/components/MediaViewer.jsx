@@ -47,9 +47,8 @@ export default function MediaViewer({ source, videoId, filePath, seekTrigger }) 
         <iframe
           id="yt-player"
           className="video-frame"
-          src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1${
-            seekTrigger?.time !== undefined ? `&start=${Math.floor(seekTrigger.time)}` : ''
-          }`}
+          src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1${seekTrigger?.time !== undefined ? `&start=${Math.floor(seekTrigger.time)}` : ''
+            }`}
           title="YouTube video player"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
