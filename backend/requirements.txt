@@ -4,5 +4,5 @@ python-multipart
 pydantic
 google-genai
 youtube-transcript-api
-yt-dlp
+yt-dlp>=2025.9.26
 python-dotenv
