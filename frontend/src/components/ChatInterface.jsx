@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-
+import API_BASE_URL from '../api'
 export default function ChatInterface({ videoId, apiKey, onSeek }) {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([
@@ -40,7 +40,7 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
         .filter(m => m.role === 'user' || m.role === 'model')
         .slice(-10);
 
-      const response = await fetch('/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -68,10 +68,10 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
   // Parses timestamps like [02:15] or [1:02:15] into clickable spans
   const parseMessageContent = (text) => {
     if (!text) return '';
-    
+
     const timestampRegex = /(\[\d{1,2}:\d{2}(?::\d{2})?\])/g;
     const parts = text.split(timestampRegex);
-    
+
     return parts.map((part, index) => {
       const match = part.match(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/);
       if (match) {
@@ -79,7 +79,7 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
         const val1 = parseInt(match[1], 10);
         const val2 = parseInt(match[2], 10);
         const val3 = match[3] !== undefined ? parseInt(match[3], 10) : null;
-        
+
         if (val3 !== null) {
           // Format is [HH:MM:SS]
           seconds = val1 * 3600 + val2 * 60 + val3;
@@ -87,11 +87,11 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
           // Format is [MM:SS]
           seconds = val1 * 60 + val2;
         }
-        
+
         return (
-          <span 
-            key={index} 
-            className="timestamp-citation" 
+          <span
+            key={index}
+            className="timestamp-citation"
             onClick={() => onSeek(seconds)}
             title={`Seek to ${part}`}
           >
@@ -109,7 +109,7 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
         <div className="chat-pulse"></div>
         <span>AI Video Study Assistant</span>
       </div>
-      
+
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-message ${msg.role}`}>
@@ -123,7 +123,7 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
         )}
         <div ref={messagesEndRef} />
       </div>
-      
+
       <form onSubmit={handleSend} className="chat-input-row">
         <input
           type="text"
@@ -133,9 +133,9 @@ export default function ChatInterface({ videoId, apiKey, onSeek }) {
           onChange={(e) => setQuery(e.target.value)}
           disabled={isSending || !videoId}
         />
-        <button 
-          type="submit" 
-          className="chat-send-btn" 
+        <button
+          type="submit"
+          className="chat-send-btn"
           disabled={!query.trim() || isSending || !videoId}
         >
           ➔

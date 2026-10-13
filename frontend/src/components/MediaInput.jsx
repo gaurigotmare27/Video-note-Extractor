@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-
+import API_BASE_URL from '../api'
 export default function MediaInput({
   onProcessStart,
   onProcessSuccess,
@@ -18,7 +18,7 @@ export default function MediaInput({
     onProcessStart("Fetching YouTube transcript and running AI extraction...");
 
     try {
-      const response = await fetch('/api/process-youtube', {
+      const response = await fetch(`${API_BASE_URL}/api/process-youtube`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -54,7 +54,7 @@ export default function MediaInput({
     formData.append('file', file);
 
     try {
-      const response = await fetch('/api/process-upload', {
+      const response = await fetch(`${API_BASE_URL}/api/process-upload`, {
         method: 'POST',
         body: formData,
       });
