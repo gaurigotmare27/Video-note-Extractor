@@ -41,7 +41,8 @@ class YouTubeService:
                             raw_transcript = first_transcript.fetch()
                     else:
                         raw_transcript = first_transcript.fetch()
-                except Exception:
+                except Exception as e:
+                    print(f"Transcript fallback failed for {video_id}: {e}")
                     raw_transcript = None
         except Exception as e:
             print(f"Error fetching transcript via youtube-transcript-api for {video_id}: {str(e)}")
