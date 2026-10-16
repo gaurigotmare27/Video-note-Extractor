@@ -110,8 +110,19 @@ async def process_youtube(req: YouTubeRequest):
         print(f"No transcript found for video {video_id}. Downloading audio...")
         try:
             audio_path = YouTubeService.download_audio(video_id, UPLOAD_DIR)
+        
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to download YouTube audio: {str(e)}")
+            print(f"YouTube audio download failed for {video_id}: {e}")
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "We couldn't access this video's transcript or audio. "
+                    "YouTube may be restricting access from our server. "
+                    "Please upload the video or audio file directly, "
+                    "then try processing it again."
+                )
+            )
+
             
         print(f"Audio downloaded to {audio_path}. Uploading to Gemini Files API...")
         try:
